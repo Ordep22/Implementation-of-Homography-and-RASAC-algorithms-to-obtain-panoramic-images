@@ -90,7 +90,7 @@ class ImageProcess:
         self.DrawMatchesPoints()
 
        #Find Homography by RANSAC algothim
-        self.Homography.HomographyMatrices(self.goodMatchespostions)
+        self.Homography.Homography(self.goodMatchespostions)
 
     def DrawMatchesPoints(self, outImage=None):
 
@@ -107,9 +107,8 @@ class Homography:
     def __init__(self):
         pass
 #Mudar o nome desta função para RANSACImplementation
-    def HomographyMatrices(self, goodMatchespostions):
-
-        self.PosProssesingImage = PosProssesingImage()
+    def Homography(self, goodMatchespostions):
+        self.PosProssesingImage = PosProssesingImage()  # Certifique-se de tratar a criação da instância
 
         dstPoints = []
         srcPoints = []
@@ -124,44 +123,43 @@ class Homography:
         # RANSAC algorithm, selecting the best fit homography
         NumSample = len(goodMatchespostions)
         threshold = 5.0
-        Interations = 8000
-        NumRamdomSubSample = 4
+        Iterations = 4000
+        NumRandomSubSample = 4
         MaxInlier = 0
         Best_H = None
 
-        for run in range(Interations):
+        for run in range(Iterations):
 
-            SubSampleIdx = random.sample(range(NumSample), NumRamdomSubSample)  # get the Index of ramdom sampling
+            SubSampleIdx = random.sample(range(NumSample), NumRandomSubSample)  # Get the index of random sampling
 
             homography = self.SolveHomography(srcPoints[SubSampleIdx], dstPoints[SubSampleIdx])
 
-            # find the best Homography have the maximum number of inlier
+            # Find the best Homography with the maximum number of inliers
             NumInlier = 0
 
             for i in range(NumSample):
 
                 if i not in SubSampleIdx:
 
-                    concateCoor = np.hstack((srcPoints[i], [1]))  # add z-axis as 1
+                    concateCoor = np.hstack((srcPoints[i], [1]))  # Add z-axis as 1
 
-                    dstCoor = homography @ concateCoor.T  # calculate the coordination after transform to destination img
+                    dstCoor = homography @ concateCoor.T  # Calculate the coordination after transforming to destination image
 
-                    if dstCoor[2] <= 1e-8:  # avoid divide zero number, or too small number cause overflow
+                    if dstCoor[2] <= 1e-8:  # Avoid division by zero or causing overflow due to very small number
                         continue
 
                     dstCoor = dstCoor / dstCoor[2]
 
-                    if (np.linalg.norm(dstCoor[:2] - dstPoints[i]) < threshold):
+                    if np.linalg.norm(dstCoor[:2] - dstPoints[i]) < threshold:
+                        NumInlier += 1
 
-                        NumInlier = NumInlier + 1
-
-            if (MaxInlier < NumInlier):
+            if MaxInlier < NumInlier:
 
                 MaxInlier = NumInlier
 
                 Best_H = homography
 
-        print("The Number of Maximum Inlier:", MaxInlier)
+        print("The Number of Maximum Inliers:", MaxInlier)
 
         #Creating the panoramic image
         self.PosProssesingImage.Warp(ImageProcess.image,Best_H)
@@ -218,12 +216,10 @@ class PosProssesingImage:
                 # else we need the tranform for this pixel
                 stitch_img[i, j] = img_right[x, y]
 
+
         # create the Blender object to blending the image
         stitch_img = self.Blending([ImageProcess.image[0], stitch_img])
 
-
-        # remove the black border
-        stitch_img = self.RemoveBlackBorder(stitch_img)
 
 
         plt.imshow(stitch_img.astype(int))
@@ -289,37 +285,11 @@ class PosProssesingImage:
         return linearBlending_img
 
 
-    def RemoveBlackBorder(self, img):
-
-        h, w = img.shape[:2]
-        reduced_h, reduced_w = h, w
-        # right to left
-        for col in range(w - 1, -1, -1):
-            all_black = True
-            for i in range(h):
-                if (np.count_nonzero(img[i, col]) > 0):
-                    all_black = False
-                    break
-            if (all_black == True):
-                reduced_w = reduced_w - 1
-
-        # bottom to top
-        for row in range(h - 1, -1, -1):
-            all_black = True
-            for i in range(reduced_w):
-                if (np.count_nonzero(img[row, i]) > 0):
-                    all_black = False
-                    break
-            if (all_black == True):
-                reduced_h = reduced_h - 1
-
-        return img[:reduced_h, :reduced_w]
-
 
 if __name__ == "__main__":
     files = [
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Job one: panoramic photo/images/image_2.1.png",
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Job one: panoramic photo/images/image_2.2.png"]
+        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.1.png",
+        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.2.png"]
 
     ImageProcess = ImageProcess()
 
