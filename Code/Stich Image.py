@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import random
 
+from openai.cli import Image
+
 
 # Defines
 
@@ -33,6 +35,18 @@ class ImageProcess:
 
 
         self.FindDescriptosKeipoints()
+
+    def ImageShape(self):
+
+        imageOne = ImageProcess.image[0]
+
+        imageTow = ImageProcess.image[1]
+
+        (hegihtOne, widthOne) = imageOne.shape[:2]
+
+        (hegihtTow, widthTow) = imageTow.shape[:2]
+
+        return (hegihtOne, widthOne), (hegihtTow, widthTow)
 
     def FindDescriptosKeipoints(self):
 
@@ -106,9 +120,10 @@ class Homography:
 
     def __init__(self):
         pass
-#Mudar o nome desta função para RANSACImplementation
+
     def Homography(self, goodMatchespostions):
-        self.PosProssesingImage = PosProssesingImage()  # Certifique-se de tratar a criação da instância
+
+        self.PosProssesingImage = PosProssesingImage()
 
         dstPoints = []
         srcPoints = []
@@ -161,8 +176,12 @@ class Homography:
 
         print("The Number of Maximum Inliers:", MaxInlier)
 
+        print("The Number of Maximum Outliers:", MaxInlier)
+
+        print("The Number of Maximum Inliers/Allmatche:", MaxInlier)
+
         #Creating the panoramic image
-        self.PosProssesingImage.Warp(ImageProcess.image,Best_H)
+        self.PosProssesingImage.Warp(Best_H)
 
     def SolveHomography(self, originalPlane, newPlane):
 
@@ -190,17 +209,19 @@ class Homography:
 class PosProssesingImage:
     def __init__(self):
         pass
-    def Warp(self, imgs, HomoMat):
+    def Warp(self,HomoMat):
 
-        img_left, img_right = imgs
-        (hl, wl) = img_left.shape[:2]
-        (hr, wr) = img_right.shape[:2]
-        stitch_img = np.zeros((max(hl, hr), wl + wr, 3),
-                              dtype="int")  # create the (stitch)big image accroding the imgs height and width
+        self.PosProssesingImage = PosProssesingImage()
 
+        #Geting the image´s height and width
+        (hegihtOne, widthOne),(hegihtTow, widthTow) = ImageProcess.ImageShape()
+
+        # create the big image accroding the image´s height and width
+        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),dtype="int")  # create the (stitch)big image accroding the imgs height and width
 
         # Transform Right image(the coordination of right image) to destination iamge(the coordination of left image) with HomoMat
         inv_H = np.linalg.inv(HomoMat)
+
         for i in range(stitch_img.shape[0]):
             for j in range(stitch_img.shape[1]):
                 coor = np.array([j, i, 1])
@@ -211,10 +232,10 @@ class PosProssesingImage:
                 y, x = int(round(img_right_coor[0])), int(round(img_right_coor[1]))  # y for width, x for height
 
                 # if the computed coordination not in the (hegiht, width) of right image, it's not need to be process
-                if (x < 0 or x >= hr or y < 0 or y >= wr):
+                if (x < 0 or x >= hegihtTow or y < 0 or y >= widthTow):
                     continue
                 # else we need the tranform for this pixel
-                stitch_img[i, j] = img_right[x, y]
+                stitch_img[i, j] = ImageProcess.image[1][x, y]
 
 
         # create the Blender object to blending the image
@@ -288,8 +309,8 @@ class PosProssesingImage:
 
 if __name__ == "__main__":
     files = [
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.1.png",
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.2.png"]
+        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.1.png",
+        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.2.png"]
 
     ImageProcess = ImageProcess()
 
