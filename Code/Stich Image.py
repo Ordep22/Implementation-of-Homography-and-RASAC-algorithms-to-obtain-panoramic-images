@@ -146,6 +146,12 @@ class Homography:
 
         ImageTowpoints = []
 
+        #Inliers and outlier
+        numInlier = 0
+        numOutliers = 0
+
+
+
         for dstPoint, srcPoint in goodMatchespostions:
 
             ImageOnepoints.append(dstPoint)
@@ -165,7 +171,7 @@ class Homography:
 
             # Find the best Homography with the maximum number of inliers
 
-            NumInlier = 0
+
 
             for i in range(numSample):
 
@@ -180,19 +186,23 @@ class Homography:
 
                     dstCoor = dstCoor / dstCoor[2]
 
+                   #Verify if the correspondence are a inlier or not
                     if np.linalg.norm(dstCoor[:2] - ImageOnepoints[i]) < threshold:
-                        NumInlier += 1
+                        numInlier += 1
 
-            if maxInlier < NumInlier:
-                maxInlier = NumInlier
+                    else: #Verificar se é a forma correta de calcular os outliers
+                        numOutliers += 1
+
+            if maxInlier < numInlier:
+                maxInlier = numInlier
 
                 bestHomography = homography
 
-        print("The Number of Maximum Inliers:", maxInlier)
+        print(f"The Number of Maximum Inliers: {numInlier}")
 
-        print("The Number of Maximum Outliers:", maxInlier)
+        print(f"The Number of Maximum Outliers:{numOutliers}")
 
-        print("The Number of Maximum Inliers/Allmatche:", maxInlier)
+        print(f"The Number of Maximum Outliers/inliers:{numOutliers/numInlier}")
 
         # Creating the panoramic image
         self.PosProssesingImage.Warp(bestHomography)
@@ -228,22 +238,30 @@ class PosProssesingImage:
 
     def Warp(self, HomoMat):
 
+
         self.PosProssesingImage = PosProssesingImage()
 
         # Geting the image´s height and width
         (hegihtOne, widthOne), (hegihtTow, widthTow) = ImageProcess.ImageShape()
 
         # create the big image accroding the image´s height and width
-        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),
-                              dtype="int")  # create the (stitch)big image accroding the imgs height and width
+        # create the (stitch)big image accroding the imgs height and width
 
-        # Transform Right image(the coordination of right image) to destination iamge(the coordination of left image) with HomoMat
+        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),
+                              dtype="int")
+
+        # Transform Right image(the coordination of right image) to destination
+        # iamge(the coordination of left image) with HomoMat
         inv_H = np.linalg.inv(HomoMat)
 
         for i in range(stitch_img.shape[0]):
+
             for j in range(stitch_img.shape[1]):
+
                 coor = np.array([j, i, 1])
+
                 img_right_coor = inv_H @ coor  # the coordination of right image
+
                 img_right_coor /= img_right_coor[2]
 
                 # you can try like nearest neighbors or interpolation
@@ -256,7 +274,7 @@ class PosProssesingImage:
                 stitch_img[i, j] = ImageProcess.image[1][x, y]
 
         # create the Blender object to blending the image
-        stitch_img = self.Blending([ImageProcess.image[0], stitch_img])
+        stitch_img = self.Blending([ImageProcess.image[0], stitch_img.astype(int)])
 
         plt.imshow(stitch_img.astype(int))
         plt.title("Stitch Image")
@@ -264,11 +282,27 @@ class PosProssesingImage:
 
     def Blending(self, imgs):
 
-        img_left, img_right = imgs
-        (hl, wl) = img_left.shape[:2]
-        (hr, wr) = img_right.shape[:2]
-        img_left_mask = np.zeros((hr, wr), dtype="int")
-        img_right_mask = np.zeros((hr, wr), dtype="int")
+        result = cv.addWeighted(imgs[0], 0.3, imgs[1], 0.7, 0.0)
+
+        cv.imshow('blend', result)
+        cv.imshow('img1', imgs[0])
+        cv.imshow('img2', imgs[1])
+
+        cv.waitKey(0)
+
+
+        """
+
+        :param imgs:
+        :return:
+         self.PosProssesingImage = PosProssesingImage()
+
+        # Geting the image´s height and width
+        (hegihtOne, widthOne), (hegihtTow, widthTow) = ImageProcess.ImageShape()
+
+        #Criate a mask
+        img_left_mask = np.zeros((hegihtOne, widthOne), dtype="int")
+        img_right_mask = np.zeros((hegihtTow, widthTow), dtype="int")
 
         # find the left image and right image mask region(Those not zero pixels)
         for i in range(hl):
@@ -317,13 +351,16 @@ class PosProssesingImage:
                     linearBlending_img[i, j] = alpha_mask[i, j] * img_left[i, j] + (1 - alpha_mask[i, j]) * img_right[
                         i, j]
 
-        return linearBlending_img
+
+        """
+        return result
 
 
 if __name__ == "__main__":
     files = [
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.1.png",
-        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.2.png"]
+        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.1.png",
+        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.2.png",
+        ]
 
     ImageProcess = ImageProcess()
 
