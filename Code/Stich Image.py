@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import random
 
-from openai.cli import Image
-
 
 # Defines
 
@@ -14,25 +12,28 @@ class ImageProcess:
         self.src_pts = None
         self.dst_pts = None
         self.image = None
+        self.Paths  = None
 
     def LoadImage(self, Paths):
+        self.Paths = Paths
+
+        print("1- Loading images:")
+
         self.image = []
 
         for x in Paths:
             self.image.append(cv.imread(x))
 
-
-        plt.subplot(1,2,1)
-        plt.imshow(self.image[0],'gray')
+        plt.subplot(1, 2, 1)
+        plt.imshow(self.image[0], 'gray')
         plt.title("Image One")
 
-        plt.subplot(1,2,2)
-        plt.imshow(self.image[1],'gray')
+        plt.subplot(1, 2, 2)
+        plt.imshow(self.image[1], 'gray')
         plt.title("Image Tow")
 
-        #Show loaded images
+        # Show loaded images
         plt.show()
-
 
         self.FindDescriptosKeipoints()
 
@@ -50,6 +51,8 @@ class ImageProcess:
 
     def FindDescriptosKeipoints(self):
 
+        print("2 - Find descriptors and keypoits")
+
         # Initializing descriptors
         sift = cv.SIFT_create()
 
@@ -57,14 +60,16 @@ class ImageProcess:
         self.kpOne, self.desOne = sift.detectAndCompute(self.image[0], None)
         self.kpTow, self.desTow = sift.detectAndCompute(self.image[1], None)
 
-        #Find good Matches from key points and descripstors
+        # Find good Matches from key points and descripstors
         self.FindGoodMatches()
 
     def FindGoodMatches(self):
 
-        self.src_pts = []
+        print("3 - Find the good matches")
 
-        self.dst_pts = []
+        self.src_pts = [] #point's image one
+
+        self.dst_pts = []#points image tow
 
         self.goodMatches = []
 
@@ -78,7 +83,7 @@ class ImageProcess:
 
         flann = cv.FlannBasedMatcher(indexParamentrs, searchParams)
 
-        #Calculating the matches points from drecriptors
+        # Calculating the matches points from drecriptors
         matches = flann.knnMatch(self.desOne, self.desTow, k=2)
 
         # Find the good matches
@@ -91,7 +96,6 @@ class ImageProcess:
         self.dst_pts = (([self.kpTow[m.trainIdx].pt for m in self.goodMatches]))
 
         for x in range(0, len(self.src_pts), 1):
-
             src = list(self.src_pts[x])
             src = [int(src[i]) for i in range(0, len(src), 1)]
 
@@ -100,20 +104,22 @@ class ImageProcess:
 
             self.goodMatchespostions.append([src, dts])
 
-        #Draw matches points in a image
+        # Draw matches points in a image
         self.DrawMatchesPoints()
 
-       #Find Homography by RANSAC algothim
+        # Find Homography by RANSAC algothim
         self.Homography.Homography(self.goodMatchespostions)
 
     def DrawMatchesPoints(self, outImage=None):
 
-        matchedImage = cv.drawMatches(self.image[0], self.kpOne, self.image[1], self.kpTow, self.goodMatches,
+        print("4 - Drawing the matches points")
+
+        matchedImage = cv.drawMatches(self.image[0], self.kpOne, self.image[1], self.kpTow, self.goodMatches[0:100],
                                       outImage, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-        plt.imshow(matchedImage, 'gray')
-        plt.title("Matches points")
-        plt.show()
+        cv.imshow("Image metches", matchedImage)
+        cv.waitKey(0)
+        #cv.imwrite() Salvar a imagem com base no nome de entrada da path
 
 
 class Homography:
@@ -123,40 +129,49 @@ class Homography:
 
     def Homography(self, goodMatchespostions):
 
+        print("5 - Computing the best homograpy by RANSAC")
+
         self.PosProssesingImage = PosProssesingImage()
 
-        dstPoints = []
-        srcPoints = []
-
-        for dstPoint, srcPoint in goodMatchespostions:
-            dstPoints.append(dstPoint)
-            srcPoints.append(srcPoint)
-
-        dstPoints = np.array(dstPoints)
-        srcPoints = np.array(srcPoints)
-
-        # RANSAC algorithm, selecting the best fit homography
-        NumSample = len(goodMatchespostions)
+        # RANSAC constants
+        numSample = len(goodMatchespostions)
         threshold = 5.0
         Iterations = 4000
-        NumRandomSubSample = 4
-        MaxInlier = 0
-        Best_H = None
+        numRandomsubSample = 4
+        maxInlier = 0
+        bestHomography = None
 
+        #Variables of method Homography
+        ImageOnepoints = []
+
+        ImageTowpoints = []
+
+        for dstPoint, srcPoint in goodMatchespostions:
+
+            ImageOnepoints.append(dstPoint)
+
+            ImageTowpoints.append(srcPoint)
+
+        ImageOnepoints = np.array(ImageOnepoints)
+
+        ImageTowpoints = np.array(ImageTowpoints)
+
+        # RANSAC algorithm, find the best fit homography
         for run in range(Iterations):
 
-            SubSampleIdx = random.sample(range(NumSample), NumRandomSubSample)  # Get the index of random sampling
+            SubSampleIdx = random.sample(range(numSample), numRandomsubSample)
 
-            homography = self.SolveHomography(srcPoints[SubSampleIdx], dstPoints[SubSampleIdx])
+            homography = self.SolveHomography(ImageTowpoints[SubSampleIdx], ImageOnepoints[SubSampleIdx])
 
             # Find the best Homography with the maximum number of inliers
+
             NumInlier = 0
 
-            for i in range(NumSample):
+            for i in range(numSample):
 
                 if i not in SubSampleIdx:
 
-                    concateCoor = np.hstack((srcPoints[i], [1]))  # Add z-axis as 1
+                    concateCoor = np.hstack((ImageTowpoints[i], [1]))  # Add z-axis as 1
 
                     dstCoor = homography @ concateCoor.T  # Calculate the coordination after transforming to destination image
 
@@ -165,31 +180,32 @@ class Homography:
 
                     dstCoor = dstCoor / dstCoor[2]
 
-                    if np.linalg.norm(dstCoor[:2] - dstPoints[i]) < threshold:
+                    if np.linalg.norm(dstCoor[:2] - ImageOnepoints[i]) < threshold:
                         NumInlier += 1
 
-            if MaxInlier < NumInlier:
+            if maxInlier < NumInlier:
+                maxInlier = NumInlier
 
-                MaxInlier = NumInlier
+                bestHomography = homography
 
-                Best_H = homography
+        print("The Number of Maximum Inliers:", maxInlier)
 
-        print("The Number of Maximum Inliers:", MaxInlier)
+        print("The Number of Maximum Outliers:", maxInlier)
 
-        print("The Number of Maximum Outliers:", MaxInlier)
+        print("The Number of Maximum Inliers/Allmatche:", maxInlier)
 
-        print("The Number of Maximum Inliers/Allmatche:", MaxInlier)
-
-        #Creating the panoramic image
-        self.PosProssesingImage.Warp(Best_H)
+        # Creating the panoramic image
+        self.PosProssesingImage.Warp(bestHomography)
 
     def SolveHomography(self, originalPlane, newPlane):
 
         try:
             A = []
             for r in range(len(originalPlane)):
-                A.append([-originalPlane[r, 0], -originalPlane[r, 1], -1, 0, 0, 0, originalPlane[r, 0] * newPlane[r, 0], originalPlane[r, 1] * newPlane[r, 0], newPlane[r, 0]])
-                A.append([0, 0, 0, -originalPlane[r, 0], -originalPlane[r, 1], -1, originalPlane[r, 0] * newPlane[r, 1], originalPlane[r, 1] * newPlane[r, 1], newPlane[r, 1]])
+                A.append([-originalPlane[r, 0], -originalPlane[r, 1], -1, 0, 0, 0, originalPlane[r, 0] * newPlane[r, 0],
+                          originalPlane[r, 1] * newPlane[r, 0], newPlane[r, 0]])
+                A.append([0, 0, 0, -originalPlane[r, 0], -originalPlane[r, 1], -1, originalPlane[r, 0] * newPlane[r, 1],
+                          originalPlane[r, 1] * newPlane[r, 1], newPlane[r, 1]])
 
             # Solve s ystem of linear equations Ah = 0 using SVD
             u, s, vt = np.linalg.svd(A)
@@ -209,15 +225,17 @@ class Homography:
 class PosProssesingImage:
     def __init__(self):
         pass
-    def Warp(self,HomoMat):
+
+    def Warp(self, HomoMat):
 
         self.PosProssesingImage = PosProssesingImage()
 
-        #Geting the image´s height and width
-        (hegihtOne, widthOne),(hegihtTow, widthTow) = ImageProcess.ImageShape()
+        # Geting the image´s height and width
+        (hegihtOne, widthOne), (hegihtTow, widthTow) = ImageProcess.ImageShape()
 
         # create the big image accroding the image´s height and width
-        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),dtype="int")  # create the (stitch)big image accroding the imgs height and width
+        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),
+                              dtype="int")  # create the (stitch)big image accroding the imgs height and width
 
         # Transform Right image(the coordination of right image) to destination iamge(the coordination of left image) with HomoMat
         inv_H = np.linalg.inv(HomoMat)
@@ -237,16 +255,12 @@ class PosProssesingImage:
                 # else we need the tranform for this pixel
                 stitch_img[i, j] = ImageProcess.image[1][x, y]
 
-
         # create the Blender object to blending the image
         stitch_img = self.Blending([ImageProcess.image[0], stitch_img])
-
-
 
         plt.imshow(stitch_img.astype(int))
         plt.title("Stitch Image")
         plt.show()
-
 
     def Blending(self, imgs):
 
@@ -306,14 +320,11 @@ class PosProssesingImage:
         return linearBlending_img
 
 
-
 if __name__ == "__main__":
     files = [
-        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.1.png",
-        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.2.png"]
+        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.1.png",
+        "/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_1.2.png"]
 
     ImageProcess = ImageProcess()
 
     ImageProcess.LoadImage(files)
-
-
