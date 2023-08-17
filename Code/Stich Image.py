@@ -91,6 +91,9 @@ class ImageProcess:
             if m.distance < 0.7 * n.distance:
                 self.goodMatches.append(m)
 
+         # Show the number of corresponces implemented
+        print(f"The number of correspondeces implementade is: {len(self.goodMatches)}")
+
         self.src_pts = (([self.kpOne[m.queryIdx].pt for m in self.goodMatches]))
 
         self.dst_pts = (([self.kpTow[m.trainIdx].pt for m in self.goodMatches]))
@@ -103,6 +106,8 @@ class ImageProcess:
             dts = [int(dts[i]) for i in range(0, len(dts), 1)]
 
             self.goodMatchespostions.append([src, dts])
+
+          
 
         # Draw matches points in a image
         self.DrawMatchesPoints()
@@ -117,98 +122,99 @@ class ImageProcess:
         matchedImage = cv.drawMatches(self.image[0], self.kpOne, self.image[1], self.kpTow, self.goodMatches[0:100],
                                       outImage, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-        cv.imshow("Image metches", matchedImage)
-        cv.waitKey(0)
-        #cv.imwrite() Salvar a imagem com base no nome de entrada da path
-
+        plt.imshow(matchedImage)
+        plt.title("Image metches")
+        plt.show()
 
 class Homography:
 
     def __init__(self):
-        pass
+        self.goodMatchespostions = None
+        self.goodMatches = None
 
     def Homography(self, goodMatchespostions):
 
-        print("5 - Computing the best homograpy by RANSAC")
+            global run
+            print("5 - Computing the best homograpy by RANSAC")
 
-        self.PosProssesingImage = PosProssesingImage()
+            self.PosProssesingImage = PosProssesingImage()
 
-        # RANSAC constants
-        numSample = len(goodMatchespostions)
-        threshold = 5.0
-        Iterations = 4000
-        numRandomsubSample = 4
-        maxInlier = 0
-        bestHomography = None
+            # RANSAC constants
+            threshold = 5.0
+            maxInlier = 0
+            bestHomography = None
+            numRandomsubSample = 4
+            errorAccumulated = 0
 
-        #Variables of method Homography
-        ImageOnepoints = []
+            # Variables of method Homography
+            ImageOnepoints = []
+            ImageTowpoints = []
 
-        ImageTowpoints = []
+            for dstPoint, srcPoint in goodMatchespostions:
+                ImageOnepoints.append(dstPoint)
+                ImageTowpoints.append(srcPoint)
 
-        #Inliers and outlier
-        numInlier = 0
-        numOutliers = 0
+            ImageOnepoints = np.array(ImageOnepoints)
+            ImageTowpoints = np.array(ImageTowpoints)
 
+            numSample = len(goodMatchespostions)
+            minInliers = int(numSample * 0.6)  # Minimum inliers for adaptation
+            maxIterations = 10000  # Maximum iterations
 
+            # RANSAC algorithm, find the best fit homography
+            for run in range(maxIterations):
 
-        for dstPoint, srcPoint in goodMatchespostions:
+                if run > 0 and numInlier >= minInliers:
+                    break  # Stop early if enough inliers found
 
-            ImageOnepoints.append(dstPoint)
+                SubSampleIdx = random.sample(range(numSample), numRandomsubSample)
 
-            ImageTowpoints.append(srcPoint)
+                homography = self.SolveHomography(ImageTowpoints[SubSampleIdx], ImageOnepoints[SubSampleIdx])
 
-        ImageOnepoints = np.array(ImageOnepoints)
+                numInlier = 0
 
-        ImageTowpoints = np.array(ImageTowpoints)
+                # Find the best Homography with the maximum number of inliers
+                for i in range(numSample):
 
-        # RANSAC algorithm, find the best fit homography
-        for run in range(Iterations):
+                    if i not in SubSampleIdx:
 
-            SubSampleIdx = random.sample(range(numSample), numRandomsubSample)
+                        concateCoor = np.hstack((ImageTowpoints[i], [1]))  # Add z-axis as 1
 
-            homography = self.SolveHomography(ImageTowpoints[SubSampleIdx], ImageOnepoints[SubSampleIdx])
+                        dstCoor = homography @ concateCoor.T  # Calculate the coordination after transforming to destination image
 
-            # Find the best Homography with the maximum number of inliers
+                        if dstCoor[2] <= 1e-8:
+                            continue
 
+                        dstCoor = dstCoor / dstCoor[2]
 
+                        errorAccumulated += np.linalg.norm(dstCoor[:2] - ImageOnepoints[i])
 
-            for i in range(numSample):
+                        if np.linalg.norm(dstCoor[:2] - ImageOnepoints[i]) < threshold:
+                            numInlier += 1
 
-                if i not in SubSampleIdx:
+                if numInlier > maxInlier:
+                    maxInlier = numInlier
+                    bestHomography = homography
 
-                    concateCoor = np.hstack((ImageTowpoints[i], [1]))  # Add z-axis as 1
+            percentual_inliers = (numInlier / numSample) * 100
 
-                    dstCoor = homography @ concateCoor.T  # Calculate the coordination after transforming to destination image
+            percentual_outliers = ((numSample - numInlier) / numSample) * 100
 
-                    if dstCoor[2] <= 1e-8:  # Avoid division by zero or causing overflow due to very small number
-                        continue
+            print(f"The number of Maximum Inliers: {maxInlier}")
 
-                    dstCoor = dstCoor / dstCoor[2]
+            print(f"Number of iterations: {run + 1}")
 
-                   #Verify if the correspondence are a inlier or not
-                    if np.linalg.norm(dstCoor[:2] - ImageOnepoints[i]) < threshold:
-                        numInlier += 1
+            print(f"Percentage inliers {percentual_inliers}")
 
-                    else: #Verificar se é a forma correta de calcular os outliers
-                        numOutliers += 1
+            print(f"Average cumulative error {errorAccumulated/numInlier}")
 
-            if maxInlier < numInlier:
-                maxInlier = numInlier
+            # Creating the panoramic image
+            self.PosProssesingImage.Warp(bestHomography)
 
-                bestHomography = homography
-
-        print(f"The Number of Maximum Inliers: {numInlier}")
-
-        print(f"The Number of Maximum Outliers:{numOutliers}")
-
-        print(f"The Number of Maximum Outliers/inliers:{numOutliers/numInlier}")
-
-        # Creating the panoramic image
-        self.PosProssesingImage.Warp(bestHomography)
 
     def SolveHomography(self, originalPlane, newPlane):
 
+        global homographyMatrices
         try:
             A = []
             for r in range(len(originalPlane)):
@@ -221,14 +227,14 @@ class Homography:
             u, s, vt = np.linalg.svd(A)
 
             # Pick H from last line of vt
-            homographyMat = np.reshape(vt[8], (3, 3))
+            homographyMatrices = np.reshape(vt[8], (3, 3))
 
             # Normalization, let H[2,2] equals to 1
-            homographyMat = (1 / homographyMat.item(8)) * homographyMat
+            homographyMatrices = (1 / homographyMatrices.item(8)) * homographyMatrices
         except:
             print("Error occur!")
 
-        return homographyMat
+        return homographyMatrices
 
 
 # noinspection PyUnreachableCode
@@ -236,8 +242,9 @@ class PosProssesingImage:
     def __init__(self):
         pass
 
-    def Warp(self, HomoMat):
+    def Warp(self, homography_matrix):
 
+        print(f"6 - Warping images")
 
         self.PosProssesingImage = PosProssesingImage()
 
@@ -247,12 +254,13 @@ class PosProssesingImage:
         # create the big image accroding the image´s height and width
         # create the (stitch)big image accroding the imgs height and width
 
-        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne + widthTow, 3),
-                              dtype="int")
+       #Here ti's necessary to create a shape that was the same os a original imagens
+
+        stitch_img = np.zeros((max(hegihtOne, hegihtTow), widthOne, 3), dtype="int")
 
         # Transform Right image(the coordination of right image) to destination
-        # iamge(the coordination of left image) with HomoMat
-        inv_H = np.linalg.inv(HomoMat)
+        # iamge(the coordination of left image) with homography_matrix
+        inv_H = np.linalg.inv(homography_matrix)
 
         for i in range(stitch_img.shape[0]):
 
@@ -273,95 +281,35 @@ class PosProssesingImage:
                 # else we need the tranform for this pixel
                 stitch_img[i, j] = ImageProcess.image[1][x, y]
 
-        # create the Blender object to blending the image
-        stitch_img = self.Blending([ImageProcess.image[0], stitch_img.astype(int)])
-
-        plt.imshow(stitch_img.astype(int))
+        plt.imshow(stitch_img)
         plt.title("Stitch Image")
         plt.show()
 
+        # create the Blender object to blending the image
+        self.Blending([ImageProcess.image[0], stitch_img])
+
+
     def Blending(self, imgs):
 
-        result = cv.addWeighted(imgs[0], 0.3, imgs[1], 0.7, 0.0)
+        print(f"7 - Blending Images")
 
-        cv.imshow('blend', result)
-        cv.imshow('img1', imgs[0])
-        cv.imshow('img2', imgs[1])
+        blendingImage = cv.addWeighted(imgs[0], 0.3, imgs[1], 0.7, 0.0,dtype=cv.CV_8U)
 
-        cv.waitKey(0)
+        plt.imshow(blendingImage)
 
+        plt.title("Blending image")
 
-        """
-
-        :param imgs:
-        :return:
-         self.PosProssesingImage = PosProssesingImage()
-
-        # Geting the image´s height and width
-        (hegihtOne, widthOne), (hegihtTow, widthTow) = ImageProcess.ImageShape()
-
-        #Criate a mask
-        img_left_mask = np.zeros((hegihtOne, widthOne), dtype="int")
-        img_right_mask = np.zeros((hegihtTow, widthTow), dtype="int")
-
-        # find the left image and right image mask region(Those not zero pixels)
-        for i in range(hl):
-            for j in range(wl):
-                if np.count_nonzero(img_left[i, j]) > 0:
-                    img_left_mask[i, j] = 1
-        for i in range(hr):
-            for j in range(wr):
-                if np.count_nonzero(img_right[i, j]) > 0:
-                    img_right_mask[i, j] = 1
-
-        # find the overlap mask(overlap region of two image)
-        overlap_mask = np.zeros((hr, wr), dtype="int")
-        for i in range(hr):
-            for j in range(wr):
-                if (np.count_nonzero(img_left_mask[i, j]) > 0 and np.count_nonzero(img_right_mask[i, j]) > 0):
-                    overlap_mask[i, j] = 1
-
-        # Plot the overlap mask
-        plt.title("overlap_mask")
-        plt.imshow(overlap_mask.astype(int), cmap="gray")
-
-        # compute the alpha mask to linear blending the overlap region
-        alpha_mask = np.zeros((hr, wr))  # alpha value depend on left image
-        for i in range(hr):
-            minIdx = maxIdx = -1
-            for j in range(wr):
-                if (overlap_mask[i, j] == 1 and minIdx == -1):
-                    minIdx = j
-                if (overlap_mask[i, j] == 1):
-                    maxIdx = j
-
-            if (minIdx == maxIdx):  # represent this row's pixels are all zero, or only one pixel not zero
-                continue
-
-            decrease_step = 1 / (maxIdx - minIdx)
-            for j in range(minIdx, maxIdx + 1):
-                alpha_mask[i, j] = 1 - (decrease_step * (j - minIdx))
-
-        linearBlending_img = np.copy(img_right)
-        linearBlending_img[:hl, :wl] = np.copy(img_left)
-        # linear blending
-        for i in range(hr):
-            for j in range(wr):
-                if (np.count_nonzero(overlap_mask[i, j]) > 0):
-                    linearBlending_img[i, j] = alpha_mask[i, j] * img_left[i, j] + (1 - alpha_mask[i, j]) * img_right[
-                        i, j]
-
-
-        """
-        return result
+        plt.show()
 
 
 if __name__ == "__main__":
     files = [
-        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.1.png",
-        r"C:\Users\pedro.pereira\OneDrive - LUPA\Documentos\25_GitHub\Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images\images\image_1.2.png",
+        r"/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_5.2.png",
+        r"/Users/PedroVitorPereira/Documents/GitHub/Masters-in-Computer-Science/Implementation-of-Homography-and-RASAC-algorithms-to-obtain-panoramic-images/images/image_5.1.png",
         ]
 
     ImageProcess = ImageProcess()
 
     ImageProcess.LoadImage(files)
+
+    print("Finish algorithm")
